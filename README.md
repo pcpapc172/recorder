@@ -1,7 +1,7 @@
 # GD Screen Recorder
 
 A Geometry Dash Geode mod that records the game's OpenGL framebuffer through Eclipse Team's `eclipse.ffmpeg-api` v2 event API.
-
+# WARNING : AI SLOP (yes the whole mod is made with ai)
 ## What is implemented
 
 - Native framebuffer capture from a high-z `CCNode::draw()` inside `PlayLayer`.
