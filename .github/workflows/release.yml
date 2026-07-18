@@ -116,8 +116,26 @@ jobs:
           RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
           BUILD_OUTPUT: ${{ steps.build.outputs.build-output }}
         run: |
-          gh release create "$RELEASE_VERSION" "$BUILD_OUTPUT" \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$RELEASE_COMMIT" \
-            --title "$RELEASE_VERSION" \
+          if [[ -f "$BUILD_OUTPUT" ]]; then
+            RELEASE_ASSET="$BUILD_OUTPUT"
+          else
+            RELEASE_ASSET="$(find "$BUILD_OUTPUT" -type f -name '*.geode' -print -quit)"
+          fi
+          if [[ -z "$RELEASE_ASSET" || ! -f "$RELEASE_ASSET" ]]; then
+            echo "No .geode package found under: $BUILD_OUTPUT" >&2
+            exit 1
+          fi
+
+          release_args=(
+            "$RELEASE_VERSION"
+            "$RELEASE_ASSET"
+            --repo "$GITHUB_REPOSITORY"
+            --target "$RELEASE_COMMIT"
+            --title "$RELEASE_VERSION"
             --generate-notes
+          )
+          if [[ "$RELEASE_VERSION" =~ -(alpha|beta|prerelease)(\.|$) ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          gh release create "${release_args[@]}"
