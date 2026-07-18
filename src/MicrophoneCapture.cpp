@@ -95,7 +95,13 @@ Result<> MicrophoneCapture::start() {
     namespace permission = geode::utils::permission;
     using permission::Permission;
     if (!permission::getPermissionStatus(Permission::RecordAudio)) {
-        permission::requestPermission(Permission::RecordAudio);
+        permission::requestPermission(Permission::RecordAudio, [](bool granted) {
+            if (granted) {
+                log::info("Android microphone permission granted");
+            } else {
+                log::warn("Android microphone permission denied");
+            }
+        });
         return Err("Microphone permission was requested. Allow it, then start recording again.");
     }
 #endif
