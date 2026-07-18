@@ -1,0 +1,145 @@
+{
+  "geode": "5.8.2",
+  "gd": {
+    "win": "2.2081",
+    "android": "2.2081",
+    "mac": "2.2081",
+    "ios": "2.2081"
+  },
+  "id": "pcpapc172.recorder",
+  "name": "GD Screen Recorder",
+  "version": "v1.6.0",
+  "developers": [
+    "pcpapc172"
+  ],
+  "description": "Native Geometry Dash framebuffer recorder powered by Eclipse FFmpeg API.",
+  "tags": [
+    "utility",
+    "offline"
+  ],
+  "dependencies": {
+    "eclipse.ffmpeg-api": ">=2.0.0"
+  },
+  "settings": {
+    "menu-title": {
+      "type": "title",
+      "name": "Menu"
+    },
+    "toggle-menu-keybind": {
+      "type": "keybind",
+      "name": "Open Recorder Menu",
+      "description": "Opens the GD Screen Recorder menu, where you can start/stop recording and adjust settings, from anywhere in the game.",
+      "default": "F8",
+      "category": "universal"
+    },
+    "video-title": {
+      "type": "title",
+      "name": "Video"
+    },
+    "fps": {
+      "type": "int",
+      "name": "Frame rate",
+      "description": "Frames written per second. Recording above the game's rendered frame rate cannot create missing frames.",
+      "default": 60,
+      "min": 15,
+      "max": 360,
+      "control": {
+        "arrows": true,
+        "arrow-step": 5,
+        "big-arrows": true,
+        "big-arrow-step": 30,
+        "slider": true,
+        "slider-step": 5,
+        "input": true
+      }
+    },
+    "bitrate-mbps": {
+      "type": "int",
+      "name": "Bitrate (Mbps)",
+      "default": 30,
+      "min": 1,
+      "max": 200,
+      "control": {
+        "arrows": true,
+        "arrow-step": 1,
+        "big-arrows": true,
+        "big-arrow-step": 10,
+        "slider": true,
+        "slider-step": 1,
+        "input": true
+      }
+    },
+    "queue-depth": {
+      "type": "int",
+      "name": "Encoder queue depth",
+      "description": "Number of reusable frames buffered for the encoder thread. When full, new frames are dropped instead of blocking gameplay.",
+      "default": 8,
+      "min": 2,
+      "max": 8,
+      "control": {
+        "arrows": true,
+        "arrow-step": 1,
+        "slider": true,
+        "slider-step": 1,
+        "input": true
+      }
+    },
+    "codec": {
+      "type": "string",
+      "name": "FFmpeg codec",
+      "description": "Exact video encoder name exposed by the FFmpeg API. libx264 is the broadest MP4-compatible default; hardware H.264 encoders reduce CPU use when available.",
+      "default": {
+        "win": "libx264",
+        "android": "h264_mediacodec",
+        "mac": "h264_videotoolbox",
+        "ios": "h264_videotoolbox"
+      },
+      "filter": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+    },
+    "container": {
+      "type": "string",
+      "name": "Container extension",
+      "description": "Output filename extension without a dot.",
+      "default": "mp4",
+      "one-of": [
+        "mp4",
+        "mkv",
+        "mov"
+      ]
+    },
+    "show-indicator": {
+      "type": "bool",
+      "name": "Show recording indicator",
+      "default": true
+    },
+    "audio-title": {
+      "type": "title",
+      "name": "Audio"
+    },
+    "capture-game-audio": {
+      "type": "bool",
+      "name": "Record game audio",
+      "description": "Taps Geometry Dash's FMOD master channel group while recording and mixes the captured audio into the finished video. Disable this if you only want a silent video.",
+      "default": true
+    },
+    "capture-microphone": {
+      "type": "bool",
+      "name": "Record microphone",
+      "description": "Captures the selected FMOD microphone device and mixes it with game audio into the final MP4.",
+      "default": false
+    },
+    "microphone-device-guid": {
+      "type": "string",
+      "name": "Microphone device",
+      "description": "FMOD recording-device GUID. Use the F8 menu's microphone button to cycle through detected devices.",
+      "default": "",
+      "filter": "0123456789abcdefABCDEF-"
+    },
+    "audio-file": {
+      "type": "string",
+      "name": "Audio file override path",
+      "description": "Optional stereo audio file mixed into the finished video instead of the captured game audio. Leave empty to use the captured game audio (if enabled above).",
+      "default": ""
+    }
+  }
+}

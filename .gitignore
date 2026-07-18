@@ -1,0 +1,28 @@
+# Geode/CMake build output
+build/
+build-*/
+out/
+
+# CMake-generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDE and operating-system files
+.vs/
+.vscode/
+*.sln
+*.vcxproj*
+*.user
+.DS_Store
+Thumbs.db
+
+# Compiled artifacts
+*.dll
+*.dylib
+*.so
+*.lib
+*.exp
+*.pdb
+*.geode
