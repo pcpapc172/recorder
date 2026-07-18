@@ -73,7 +73,14 @@ private:
     mutable std::mutex m_queueMutex;
     std::condition_variable m_queueCondition;
     using FrameBuffer = std::shared_ptr<std::vector<std::uint8_t>>;
-    std::deque<FrameBuffer> m_pendingFrames;
+    struct PendingFrame {
+        FrameBuffer frame;
+        // Output ticks that elapsed before this fresh capture. The encoder
+        // writes these using the latest available frame before advancing to
+        // this one, preserving chronological frame pacing.
+        std::uint64_t repeatsBefore = 0;
+    };
+    std::deque<PendingFrame> m_pendingFrames;
     std::vector<FrameBuffer> m_freeFrames;
     // The most recently written frame, kept out of m_freeFrames while it
     // holds this role. When the render thread can't capture a fresh frame
@@ -85,6 +92,10 @@ private:
     // touching frame pixel data outside of encoderLoop/captureFrame's own
     // glReadPixels call.
     FrameBuffer m_lastFrame;
+    // Dropped ticks that occurred after the last queued fresh frame. They
+    // are attached to the next fresh frame as repeatsBefore, or drained
+    // using m_lastFrame when recording stops first.
+    std::uint64_t m_pendingRepeatTicks = 0;
     std::thread m_encoderThread;
     bool m_stopRequested = false;
     std::size_t m_queueCapacity = 3;
@@ -96,10 +107,6 @@ private:
     std::uint16_t m_fps = 60;
 
     std::atomic<std::uint64_t> m_framesCaptured { 0 };
-    // Number of output frame ticks that elapsed while recording. This is
-    // deliberately separate from frames captured: a full queue must still
-    // produce duplicate frames so the encoded duration does not shrink.
-    std::atomic<std::uint64_t> m_framesDue { 0 };
     std::atomic<std::uint64_t> m_framesWritten { 0 };
     std::atomic<std::uint64_t> m_framesDropped { 0 };
     std::atomic<bool> m_recording { false };

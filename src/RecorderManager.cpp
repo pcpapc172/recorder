@@ -134,6 +134,7 @@ Result<> RecorderManager::start() {
             m_freeFrames.push_back(std::make_shared<std::vector<std::uint8_t>>(frameBytes, 0u));
         }
         m_lastFrame.reset();
+        m_pendingRepeatTicks = 0;
         m_stopRequested = false;
     } catch (std::bad_alloc const&) {
         recorder->stop();
@@ -151,7 +152,6 @@ Result<> RecorderManager::start() {
     );
     m_nextFrame = std::chrono::steady_clock::now();
     m_framesCaptured.store(0, std::memory_order_relaxed);
-    m_framesDue.store(0, std::memory_order_relaxed);
     m_framesWritten.store(0, std::memory_order_relaxed);
     m_framesDropped.store(0, std::memory_order_relaxed);
     m_recording.store(true, std::memory_order_release);
@@ -257,8 +257,6 @@ Result<> RecorderManager::captureFrame() {
         elapsed / m_framePeriod
     ) + 1;
     m_nextFrame += m_framePeriod * static_cast<std::int64_t>(elapsedTicks);
-    m_framesDue.fetch_add(elapsedTicks, std::memory_order_relaxed);
-
     GLint viewport[4] {};
     glGetIntegerv(GL_VIEWPORT, viewport);
     if (viewport[2] != static_cast<GLint>(m_width) || viewport[3] != static_cast<GLint>(m_height)) {
@@ -270,15 +268,11 @@ Result<> RecorderManager::captureFrame() {
         std::scoped_lock queueLock(m_queueMutex);
         if (m_freeFrames.empty()) {
             m_framesDropped.fetch_add(elapsedTicks, std::memory_order_relaxed);
-            // The encoder can't keep up, so there's no free buffer to grab a
-            // fresh capture into this tick. We don't skip the tick outright
-            // (that would silently shorten the encoded video relative to how
-            // long the recording actually ran, speeding up video and, in
-            // turn, desyncing/pitching the audio mux) - instead the encoder
-            // thread re-writes its last frame to cover this tick once it's
-            // done with its current backlog (see encoderLoop()). Wake it in
-            // case it's already idle. This is O(1): no frame data is copied
-            // on the render thread.
+            // Remember the missing output ticks as lightweight metadata.
+            // They are inserted before the next fresh captured frame, so
+            // motion does not run fast and then freeze at the end. No pixel
+            // data is copied and the render thread never waits for FFmpeg.
+            m_pendingRepeatTicks += elapsedTicks;
             m_queueCondition.notify_one();
             return Ok();
         }
@@ -304,7 +298,12 @@ Result<> RecorderManager::captureFrame() {
             m_freeFrames.push_back(std::move(frame));
             return Ok();
         }
-        m_pendingFrames.push_back(std::move(frame));
+        // Any missed render ticks belong immediately before this fresh
+        // frame in the output timeline. Attach them to this queue entry so
+        // the encoder cannot incorrectly place all duplicates at the end.
+        auto repeatsBefore = m_pendingRepeatTicks + (elapsedTicks - 1);
+        m_pendingRepeatTicks = 0;
+        m_pendingFrames.push_back(PendingFrame { std::move(frame), repeatsBefore });
     }
     m_framesCaptured.fetch_add(1, std::memory_order_relaxed);
     if (elapsedTicks > 1) {
@@ -322,24 +321,27 @@ void RecorderManager::encoderLoop() {
             std::unique_lock queueLock(m_queueMutex);
             m_queueCondition.wait(queueLock, [this] {
                 if (!m_pendingFrames.empty()) return true;
-                // Nothing new captured. Are we behind where real elapsed
-                // time says the video should be? If so and we have a frame
-                // to duplicate, there's padding work to do (or, if stopping,
-                // this is what lets stop drain fully before exiting).
-                auto target = m_framesDue.load(std::memory_order_relaxed);
-                if (m_lastFrame && m_framesWritten.load(std::memory_order_relaxed) < target) {
-                    return true;
-                }
+                if (m_lastFrame && m_pendingRepeatTicks > 0) return true;
                 return m_stopRequested;
             });
 
             if (!m_pendingFrames.empty()) {
-                frame = std::move(m_pendingFrames.front());
-                m_pendingFrames.pop_front();
+                auto& pending = m_pendingFrames.front();
+                if (pending.repeatsBefore > 0) {
+                    // Before the first encoded frame there is no previous
+                    // image, so the first available capture is the best
+                    // frame to hold. Afterwards always use m_lastFrame.
+                    frame = m_lastFrame ? m_lastFrame : pending.frame;
+                    --pending.repeatsBefore;
+                    isPadding = true;
+                } else {
+                    frame = std::move(pending.frame);
+                    m_pendingFrames.pop_front();
+                }
             } else {
-                auto target = m_framesDue.load(std::memory_order_relaxed);
-                if (m_lastFrame && m_framesWritten.load(std::memory_order_relaxed) < target) {
+                if (m_lastFrame && m_pendingRepeatTicks > 0) {
                     frame = m_lastFrame; // shared_ptr copy - cheap, no pixel data touched
+                    --m_pendingRepeatTicks;
                     isPadding = true;
                 } else if (m_stopRequested) {
                     break;
@@ -358,8 +360,9 @@ void RecorderManager::encoderLoop() {
         {
             std::scoped_lock queueLock(m_queueMutex);
             if (isPadding) {
-                // frame *is* m_lastFrame; it's still reserved for that role,
-                // nothing to recycle.
+                // The shared frame is still owned either by m_lastFrame or
+                // by the pending queue entry used during startup, so there
+                // is nothing to recycle.
             } else {
                 // This frame supersedes whatever was previously the "last
                 // frame". Recycle the old one back into the free pool now
@@ -456,6 +459,7 @@ Result<std::filesystem::path> RecorderManager::stop() {
         m_pendingFrames.clear();
         m_freeFrames.clear();
         m_lastFrame.reset();
+        m_pendingRepeatTicks = 0;
         m_stopRequested = false;
     }
 
