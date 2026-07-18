@@ -1,0 +1,119 @@
+name: Release Universal Geode Mod
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example v1.6.2"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    name: Update mod version
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
+
+    steps:
+      - name: Check out selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Validate version and update mod.json
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          from pathlib import Path
+
+          version = os.environ["RELEASE_VERSION"]
+          if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", version):
+              raise SystemExit("Version must use the format v1.0.0")
+
+          path = Path("mod.json")
+          manifest = json.loads(path.read_text(encoding="utf-8"))
+          manifest["version"] = version
+          path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Commit version bump
+        id: commit
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add mod.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: release ${RELEASE_VERSION}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.config.name }}
+    needs:
+      - prepare
+    runs-on: ${{ matrix.config.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Windows
+            os: windows-latest
+            target: Win64
+          - name: Android64
+            os: ubuntu-latest
+            target: Android64
+
+    steps:
+      - name: Check out release commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit }}
+
+      - name: Build mod
+        uses: geode-sdk/build-geode-mod@main
+        with:
+          combine: true
+          target: ${{ matrix.config.target }}
+
+  release:
+    name: Publish GitHub release
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Combine platform packages
+        uses: geode-sdk/build-geode-mod/combine@main
+        id: build
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pcpapc172.recorder-${{ inputs.version }}-universal
+          path: ${{ steps.build.outputs.build-output }}
+          if-no-files-found: error
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          RELEASE_COMMIT: ${{ needs.prepare.outputs.commit }}
+          BUILD_OUTPUT: ${{ steps.build.outputs.build-output }}
+        run: |
+          gh release create "$RELEASE_VERSION" "$BUILD_OUTPUT" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$RELEASE_COMMIT" \
+            --title "$RELEASE_VERSION" \
+            --generate-notes
