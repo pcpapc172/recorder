@@ -35,8 +35,12 @@ jobs:
           from pathlib import Path
 
           version = os.environ["RELEASE_VERSION"]
-          if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", version):
-              raise SystemExit("Version must use the format v1.0.0")
+          pattern = r"v[0-9]+\.[0-9]+\.[0-9]+(?:-(?:alpha|beta|prerelease)(?:\.[0-9]+)?)?"
+          if not re.fullmatch(pattern, version):
+              raise SystemExit(
+                  "Version must be a Geode version such as v1.0.0, "
+                  "v1.0.0-beta, or v1.0.0-beta.1"
+              )
 
           path = Path("mod.json")
           manifest = json.loads(path.read_text(encoding="utf-8"))
